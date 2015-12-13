@@ -1,0 +1,95 @@
+---
+- hosts: vpn
+  sudo: yes
+
+  vars:
+    server_name: vpn.server
+    server_port: 443
+    user_name: user
+    vpn_client_conf_path: ~/openvpn/{{ server_name }}
+
+  tasks:
+    - name: Install packages
+      apt: pkg={{ item }} state=latest
+      with_items:
+        - openvpn 
+        - openssl 
+        - liblzo2-2 
+        - zip 
+        - ntp 
+        - ntpdate 
+        - wget
+
+
+    - name: clean tmp
+      file: path={{ item }} state=absent
+      with_items:
+        - /tmp/2.x.zip
+        - /tmp/easy-rsa-release-2.x
+        - /etc/openvpn/easy-rsa
+
+    - name: get easy-rsa
+      shell: wget https://github.com/OpenVPN/easy-rsa/archive/release/2.x.zip chdir=/tmp
+
+    - name: unzip easy-rsa
+      unarchive: src=/tmp/2.x.zip dest=/tmp/ copy=no
+
+    - name: copy easy-rsa
+      shell: cp -r /tmp/easy-rsa-release-2.x/easy-rsa/2.0 /etc/openvpn/easy-rsa
+
+    - name: clean tmp
+      file: path={{ item }} state=absent
+      with_items:
+        - /tmp/2.x.zip
+        - /tmp/easy-rsa-release-2.x
+
+
+    - name: link openssl.cnf
+      file: src=/etc/openvpn/easy-rsa/openssl-1.0.0.cnf dest=/etc/openvpn/easy-rsa/openssl.cnf state=link
+
+    - name: run easy-rsa
+      shell: "cd /etc/openvpn/easy-rsa; . ./vars; ./clean-all; ./build-ca --batch {{ server_name }}; ./build-key-server --batch {{ server_name }}; ./build-key --batch {{ user_name }}; ./build-dh"
+
+    - name: copy keys
+      file: src=/etc/openvpn/easy-rsa/keys/{{ item }} dest=/etc/openvpn/{{ item }} state=link
+      with_items:
+        - ca.crt
+        - "{{ server_name }}.crt"
+        - "{{ server_name }}.key" 
+        - dh2048.pem
+        - "{{ user_name }}.crt"
+        - "{{ user_name }}.key"
+
+    - name: server config
+      template: src=templates/server.conf dest=/etc/openvpn/server.conf
+
+    - name: add forwarding
+      shell: echo 1 > /proc/sys/net/ipv4/ip_forward
+
+    - name: add masquerading
+      shell: /sbin/iptables -t nat -A POSTROUTING -s 10.8.0.0/24 -o eth0 -j MASQUERADE
+
+    - name: add ip_forward to rc.local 
+      lineinfile: dest=/etc/rc.local line="echo 1 > /proc/sys/net/ipv4/ip_forward" insertbefore="exit 0"
+
+    - name: add masquerading to rc.local 
+      lineinfile: dest=/etc/rc.local line="/sbin/iptables -t nat -A POSTROUTING -s 10.8.0.0/24 -o eth0 -j MASQUERADE" insertbefore="exit 0"
+
+    - name: restart openvpn
+      service: name=openvpn state=restarted
+
+    - name: create client config directory
+      local_action: file path={{ vpn_client_conf_path }} state=directory
+      sudo: false
+
+    - name: fetch vpn keys
+      fetch: src=/etc/openvpn/easy-rsa/keys/{{ item }} dest={{ vpn_client_conf_path }}/{{ item }} flat=yes
+      with_items:
+        - ca.crt
+        - "{{ user_name }}.crt"
+        - "{{ user_name }}.key"
+      
+    - name: create client config
+      local_action: template src=templates/client.ovpn dest={{ vpn_client_conf_path }}/conf.ovpn
+      sudo: false
+
