@@ -7,7 +7,7 @@ ansible-playbook setup.yml -u root -v
 ```
 or
 ```
-ansible-playbook setup.yml -u root -v --ask-sudo-pass
+ansible-playbook setup.yml -u user -v --ask-sudo-pass
 ```
 
 start openvpn client
