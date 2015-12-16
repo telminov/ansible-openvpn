@@ -10,7 +10,7 @@
 
   tasks:
     - name: Install packages
-      apt: pkg={{ item }} state=latest
+      apt: pkg={{ item }} state=latest upgrade=yes
       with_items:
         - openvpn 
         - openssl 
