@@ -1,6 +1,6 @@
 ---
 - hosts: vpn
-  sudo: yes
+  become: yes
 
   vars:
     server_name: vpn.server
@@ -12,12 +12,12 @@
     - name: Install packages
       apt: pkg={{ item }} state=latest update_cache=yes
       with_items:
-        - openvpn 
-        - openssl 
-        - liblzo2-2 
-        - zip 
-        - ntp 
-        - ntpdate 
+        - openvpn
+        - openssl
+        - liblzo2-2
+        - zip
+        - ntp
+        - ntpdate
         - wget
 
 
@@ -55,7 +55,7 @@
       with_items:
         - ca.crt
         - "{{ server_name }}.crt"
-        - "{{ server_name }}.key" 
+        - "{{ server_name }}.key"
         - dh2048.pem
         - "{{ user_name }}.crt"
         - "{{ user_name }}.key"
@@ -67,29 +67,38 @@
       shell: echo 1 > /proc/sys/net/ipv4/ip_forward
 
     - name: add masquerading
-      shell: /sbin/iptables -t nat -A POSTROUTING -s 10.8.0.0/24 -o eth0 -j MASQUERADE
+      shell: "/sbin/iptables -t nat -A POSTROUTING -s 10.8.0.0/24 -o {{ iface }} -j MASQUERADE"
 
-    - name: add ip_forward to rc.local 
-      lineinfile: dest=/etc/rc.local line="echo 1 > /proc/sys/net/ipv4/ip_forward" insertbefore="exit 0"
+    - name: add ip_forward to rc.local
+      lineinfile:
+        dest: /etc/rc.local
+        line: "echo 1 > /proc/sys/net/ipv4/ip_forward"
+        insertbefore: "exit 0"
 
-    - name: add masquerading to rc.local 
-      lineinfile: dest=/etc/rc.local line="/sbin/iptables -t nat -A POSTROUTING -s 10.8.0.0/24 -o eth0 -j MASQUERADE" insertbefore="exit 0"
+    - name: add masquerading to rc.local
+      lineinfile:
+        dest: /etc/rc.local
+        line: "/sbin/iptables -t nat -A POSTROUTING -s 10.8.0.0/24 -o {{ iface }} -j MASQUERADE"
+        insertbefore: "exit 0"
 
     - name: restart openvpn
       service: name=openvpn state=restarted
 
     - name: create client config directory
       local_action: file path={{ vpn_client_conf_path }} state=directory
-      sudo: false
+      become: no
 
     - name: fetch vpn keys
-      fetch: src=/etc/openvpn/easy-rsa/keys/{{ item }} dest={{ vpn_client_conf_path }}/{{ item }} flat=yes
+      fetch:
+        src: "/etc/openvpn/easy-rsa/keys/{{ item }}"
+        dest: "{{ vpn_client_conf_path }}/{{ item }}"
+        flat: yes
       with_items:
         - ca.crt
         - "{{ user_name }}.crt"
         - "{{ user_name }}.key"
-      
+
     - name: create client config
       local_action: template src=templates/client.ovpn dest={{ vpn_client_conf_path }}/conf.ovpn
-      sudo: false
+      become: no
 

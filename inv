@@ -1,2 +1,2 @@
 [vpn]
-vpn.address
+vpn.address     iface=ens3
